@@ -1,10 +1,10 @@
 <?php
 /**
- * Optimization Engine — First Fit Decreasing (FFD) per (size + grade) group.
+ * Optimization Engine — First Fit Decreasing (FFD) per bar size.
  *
- * No operating modes: warehouse inventory is ALWAYS consumed first when present,
- * then the shortfall is bought on new standard bars. Reusable off-cuts are
- * returned in the report so they can be auto-added back into inventory.
+ * Inventory is always consumed first, then the shortfall is bought on new
+ * standard bars. Reusable off-cuts are returned so they can be auto-added
+ * to inventory.
  *
  * @package VCO
  */
@@ -15,9 +15,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class VCO_Optimizer {
 
-	const SIZES  = array( 8, 10, 12, 14, 16, 18, 20, 22, 25, 28, 32 );
-	const GRADES = array( 'AII', 'AIII' );
-	const EPS    = 0.0005; // 0.5mm tolerance.
+	const SIZES = array( 8, 10, 12, 14, 16, 18, 20, 22, 25, 28, 32 );
+	const EPS   = 0.0005; // 0.5mm tolerance.
 
 	/** Unit weight kg/m = d^2 / 162 */
 	public static function kg_per_meter( $size ) {
@@ -26,17 +25,17 @@ class VCO_Optimizer {
 
 	/**
 	 * @param array $input {
-	 *     stock_length, kerf_mm, min_reusable_m, scrap_ratio, ton_price,
+	 *     stock_length, kerf_mm, min_reusable_m, scrap_ratio, kg_price,
 	 *     cuts[], inventory[]
 	 * }
 	 * @return array
 	 */
 	public static function optimize( array $input ) {
-		$stock    = isset( $input['stock_length'] ) ? floatval( $input['stock_length'] ) : 12;
-		$kerf     = isset( $input['kerf_mm'] ) ? floatval( $input['kerf_mm'] ) / 1000.0 : 0.0;
-		$minRem   = isset( $input['min_reusable_m'] ) ? floatval( $input['min_reusable_m'] ) : 0.5;
-		$tonPrice = isset( $input['ton_price'] ) ? floatval( $input['ton_price'] ) : 0.0;
-		$scrapR   = isset( $input['scrap_ratio'] ) ? floatval( $input['scrap_ratio'] ) : 0.3;
+		$stock   = isset( $input['stock_length'] ) ? floatval( $input['stock_length'] ) : 12;
+		$kerf    = isset( $input['kerf_mm'] ) ? floatval( $input['kerf_mm'] ) / 1000.0 : 0.0;
+		$minRem  = isset( $input['min_reusable_m'] ) ? floatval( $input['min_reusable_m'] ) : 0.5;
+		$kgPrice = isset( $input['kg_price'] ) ? floatval( $input['kg_price'] ) : 0.0;
+		$scrapR  = isset( $input['scrap_ratio'] ) ? floatval( $input['scrap_ratio'] ) : 0.3;
 		if ( $stock <= 0 ) {
 			$stock = 12;
 		}
@@ -47,19 +46,18 @@ class VCO_Optimizer {
 			$minRem = 0;
 		}
 
-		// ---- 1. Group cut requirements by size|grade (expand quantity) ----
+		// ---- 1. Group cut requirements by bar size (expand quantity) ----
 		$groups = array();
 		foreach ( ( isset( $input['cuts'] ) && is_array( $input['cuts'] ) ? $input['cuts'] : array() ) as $c ) {
-			$size  = intval( $c['size'] );
-			$grade = self::norm_grade( isset( $c['grade'] ) ? $c['grade'] : '' );
-			$len   = floatval( $c['length'] );
-			$qty   = intval( $c['quantity'] );
+			$size = intval( $c['size'] );
+			$len  = floatval( $c['length'] );
+			$qty  = intval( $c['quantity'] );
 			if ( $size <= 0 || $len <= 0 || $qty <= 0 ) {
 				continue;
 			}
-			$key = $size . '|' . $grade;
+			$key = (string) $size;
 			if ( ! isset( $groups[ $key ] ) ) {
-				$groups[ $key ] = array( 'size' => $size, 'grade' => $grade, 'pieces' => array(), 'errors' => array() );
+				$groups[ $key ] = array( 'size' => $size, 'pieces' => array(), 'errors' => array() );
 			}
 			for ( $i = 0; $i < $qty; $i++ ) {
 				$groups[ $key ]['pieces'][] = array(
@@ -70,17 +68,16 @@ class VCO_Optimizer {
 			}
 		}
 
-		// ---- 2. Group inventory by size|grade (expand quantity) — always active ----
+		// ---- 2. Group inventory by bar size (expand quantity) ----
 		$invGroups = array();
 		foreach ( ( isset( $input['inventory'] ) && is_array( $input['inventory'] ) ? $input['inventory'] : array() ) as $r ) {
-			$size  = intval( $r['size'] );
-			$grade = self::norm_grade( isset( $r['grade'] ) ? $r['grade'] : '' );
-			$len   = floatval( $r['bar_length'] );
-			$qty   = intval( $r['quantity'] );
+			$size = intval( $r['size'] );
+			$len  = floatval( $r['bar_length'] );
+			$qty  = intval( $r['quantity'] );
 			if ( $size <= 0 || $len <= 0 || $qty <= 0 ) {
 				continue;
 			}
-			$key = $size . '|' . $grade;
+			$key = (string) $size;
 			if ( ! isset( $invGroups[ $key ] ) ) {
 				$invGroups[ $key ] = array();
 			}
@@ -92,16 +89,15 @@ class VCO_Optimizer {
 			}
 		}
 
-		// ---- 3. Solve each group ----
+		// ---- 3. Solve each size group ----
 		$resultGroups = array();
 		$purchaseList = array();
 		$offcuts      = array();
 		$totals       = self::empty_totals();
 
 		foreach ( $groups as $key => $g ) {
-			$size  = $g['size'];
-			$grade = $g['grade'];
-			$kgm   = self::kg_per_meter( $size );
+			$size = $g['size'];
+			$kgm  = self::kg_per_meter( $size );
 
 			$pieces = $g['pieces'];
 			usort( $pieces, array( __CLASS__, 'cmp_desc_length' ) );
@@ -187,14 +183,12 @@ class VCO_Optimizer {
 			}
 			$barsNew = count( $newBins );
 
-			// Return every physical remnant to inventory. Reusable remnants are
-			// preferred by the next run; short scrap is still tracked as stock.
+			// Return every physical remnant to inventory.
 			foreach ( $bars as $b ) {
 				$remnant = $b['reusable'] >= self::EPS ? $b['reusable'] : $b['waste'];
 				if ( $remnant >= self::EPS ) {
 					$offcuts[] = array(
 						'size'   => $size,
-						'grade'  => $grade,
 						'length' => round( $remnant, 3 ),
 						'source' => 'new' === $b['type'] ? 'ته‌مانده شاخه نو' : 'ته‌مانده انبار',
 					);
@@ -227,16 +221,14 @@ class VCO_Optimizer {
 			$weightSupply   = $supplyLen * $kgm;
 			$weightPurchase = $barsNew * $stock * $kgm;
 
-			$cost       = ( $weightPurchase / 1000.0 ) * $tonPrice;
-			$scrapValue = ( $weightWaste / 1000.0 ) * $tonPrice * $scrapR;
-
-			// Naive baseline: one new bar per piece (no optimization, ignoring stock).
-			$naiveCost = ( ( $placedCount * $stock * $kgm ) / 1000.0 ) * $tonPrice;
-			$saving    = $naiveCost - $cost;
+			// Price is entered per kilogram (Rial).
+			$cost       = $weightPurchase * $kgPrice;
+			$scrapValue = $weightWaste * $kgPrice * $scrapR;
+			$naiveCost  = ( $placedCount * $stock * $kgm ) * $kgPrice;
+			$saving     = $naiveCost - $cost;
 
 			$groupStat = array(
 				'size'           => $size,
-				'grade'          => $grade,
 				'kg_per_meter'   => $kgm,
 				'pieces_count'   => $placedCount,
 				'useful_length'  => round( $usefulLen, 3 ),
@@ -253,7 +245,7 @@ class VCO_Optimizer {
 				'weight_waste'   => round( $weightWaste, 1 ),
 				'weight_supply'  => round( $weightSupply, 1 ),
 				'weight_purchase'=> round( $weightPurchase, 1 ),
-				'ton_price'      => $tonPrice,
+				'kg_price'       => $kgPrice,
 				'cost'           => round( $cost, 0 ),
 				'scrap_value'    => round( $scrapValue, 0 ),
 				'naive_cost'     => round( $naiveCost, 0 ),
@@ -282,7 +274,6 @@ class VCO_Optimizer {
 			if ( $barsNew > 0 ) {
 				$purchaseList[] = array(
 					'size'       => $size,
-					'grade'      => $grade,
 					'bar_length' => $stock,
 					'qty_bars'   => $barsNew,
 					'weight_kg'  => round( $weightPurchase, 1 ),
@@ -302,7 +293,7 @@ class VCO_Optimizer {
 				'kerf_mm'        => round( $kerf * 1000, 2 ),
 				'min_reusable_m' => $minRem,
 				'scrap_ratio'    => $scrapR,
-				'ton_price'      => $tonPrice,
+				'kg_price'       => $kgPrice,
 			),
 			'generated_at'  => gmdate( 'c' ),
 			'groups'        => $resultGroups,
@@ -363,15 +354,6 @@ class VCO_Optimizer {
 		$bin['length'] = round( $bin['length'], 3 );
 	}
 
-	private static function norm_grade( $grade ) {
-		$g = strtoupper( trim( (string) $grade ) );
-		$g = str_replace( array( 'آ', 'أ' ), 'A', $g );
-		if ( in_array( $g, array( 'A3', 'III', 'A-III', 'AIII' ), true ) ) {
-			return 'AIII';
-		}
-		return 'AII';
-	}
-
 	public static function cmp_desc_length( $a, $b ) {
 		return $b['length'] <=> $a['length'];
 	}
@@ -383,12 +365,7 @@ class VCO_Optimizer {
 	private static function cmp_group( $a, $b ) {
 		$sa = isset( $a['size'] ) ? intval( $a['size'] ) : intval( $a['stat']['size'] );
 		$sb = isset( $b['size'] ) ? intval( $b['size'] ) : intval( $b['stat']['size'] );
-		if ( $sa !== $sb ) {
-			return $sa <=> $sb;
-		}
-		$ga = isset( $a['grade'] ) ? $a['grade'] : $a['stat']['grade'];
-		$gb = isset( $b['grade'] ) ? $b['grade'] : $b['stat']['grade'];
-		return strcmp( $ga, $gb );
+		return $sa <=> $sb;
 	}
 
 	private static function fmt( $n ) {

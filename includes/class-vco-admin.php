@@ -139,7 +139,6 @@ class VCO_Admin {
 			'csvNonce'  => wp_create_nonce( 'vco_export' ),
 			'offcutTag' => self::OFFCUT_TAG,
 			'sizes'     => VCO_Optimizer::SIZES,
-			'grades'    => VCO_Optimizer::GRADES,
 			'version'   => VCO_VERSION,
 		) );
 	}
@@ -203,22 +202,22 @@ class VCO_Admin {
 			return number_format( (float) $n, 2, '.', '' );
 		};
 
-		$row( array( 'گزارش بهینه‌سازی برش میلگرد — VETRA Cut Optimizer' ) );
+		$row( array( 'گزارش بهینه‌سازی برش میلگرد — Vetra RebarCut' ) );
 		$row( array( 'تاریخ', $report['generated_at'] ) );
-		$row( array( 'قیمت هر تن (ریال)', $fa( $report['config']['ton_price'] ) ) );
+		$row( array( 'قیمت هر کیلوگرم (ریال)', $fa( $report['config']['kg_price'] ) ) );
 		$row( array() );
 
 		$row( array( '=== لیست خرید شاخه نو (پس از کسر موجودی انبار) ===' ) );
-		$row( array( 'سایز', 'نوع', 'طول شاخه (m)', 'تعداد شاخه', 'وزن کل (kg)', 'هزینه (ریال)' ) );
+		$row( array( 'سایز', 'طول شاخه (m)', 'تعداد شاخه', 'وزن کل (kg)', 'هزینه (ریال)' ) );
 		foreach ( $report['purchase_list'] as $pl ) {
-			$row( array( 'Ø' . $pl['size'], $pl['grade'], $fa( $pl['bar_length'] ), $pl['qty_bars'], $fa( $pl['weight_kg'] ), $fa( $pl['cost'] ) ) );
+			$row( array( 'Ø' . $pl['size'], $fa( $pl['bar_length'] ), $pl['qty_bars'], $fa( $pl['weight_kg'] ), $fa( $pl['cost'] ) ) );
 		}
 		$row( array() );
 
 		$row( array( '=== برنامه برش ===' ) );
-		$row( array( 'گروه', 'نوع شاخه', 'طول (m)', 'منبع', 'ردیف قطعات (برش‌ها)', 'ته‌مانده قابل استفاده', 'ضایعات' ) );
+		$row( array( 'سایز', 'نوع شاخه', 'طول (m)', 'منبع', 'ردیف قطعات (برش‌ها)', 'ته‌مانده قابل استفاده', 'ضایعات' ) );
 		foreach ( $report['groups'] as $g ) {
-			$label = 'Ø' . $g['stat']['size'] . ' ' . $g['stat']['grade'];
+			$label = 'Ø' . $g['stat']['size'];
 			foreach ( $g['bars'] as $b ) {
 				$cuts = array();
 				foreach ( $b['pieces'] as $p ) {
@@ -233,6 +232,21 @@ class VCO_Admin {
 					$fa( $b['reusable'] ),
 					$fa( $b['waste'] ),
 				) );
+			}
+		}
+		$row( array() );
+
+		$row( array( '=== لیست برش بهینه‌شده (جدول متنی) ===' ) );
+		$row( array( 'ردیف', 'طول برش (m)', 'سایز', 'لیبل', 'توضیحات', 'شاخه' ) );
+		$rn = 0;
+		foreach ( $report['groups'] as $g ) {
+			$bi = 0;
+			foreach ( $g['bars'] as $b ) {
+				$bi++;
+				foreach ( $b['pieces'] as $p ) {
+					$rn++;
+					$row( array( $rn, $fa( $p['length'] ), 'Ø' . $g['stat']['size'], $p['label'], $p['note'], $bi ) );
+				}
 			}
 		}
 		$row( array() );

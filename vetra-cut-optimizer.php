@@ -3,7 +3,7 @@
  * Plugin Name:       Vetra RebarCut
  * Plugin URI:        https://vetra.local/
  * Description:       بهینه‌ساز برش میلگرد — کسر خودکار از موجودی انبار، لیست خرید، نقشه گرافیکی برش، چاپ لیبل، PDF، Excel، شورتکد و REST API.
- * Version:           2.4.0
+ * Version:           2.5.0
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            VETRA
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'VCO_VERSION', '2.4.0' );
+define( 'VCO_VERSION', '2.5.0' );
 define( 'VCO_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'VCO_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 

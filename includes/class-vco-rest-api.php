@@ -141,13 +141,12 @@ class VCO_REST_API {
 			$wpdb->insert( $t, array(
 				'project_id' => $id,
 				'size'       => intval( $r['size'] ),
-				'grade'      => sanitize_text_field( $r['grade'] ?? 'AII' ),
 				'length'     => floatval( $r['length'] ),
 				'quantity'   => intval( $r['quantity'] ),
 				'label'      => sanitize_text_field( $r['label'] ?? '' ),
 				'note'       => sanitize_textarea_field( $r['note'] ?? '' ),
 				'sort_order' => $i++,
-			), array( '%d', '%d', '%s', '%f', '%d', '%s', '%s', '%d' ) );
+			), array( '%d', '%d', '%f', '%d', '%s', '%s', '%d' ) );
 		}
 		return rest_ensure_response( array( 'saved' => $i ) );
 	}
@@ -172,11 +171,10 @@ class VCO_REST_API {
 			$wpdb->insert( $t, array(
 				'project_id' => $id,
 				'size'       => intval( $r['size'] ),
-				'grade'      => sanitize_text_field( $r['grade'] ?? 'AII' ),
 				'bar_length' => floatval( $r['bar_length'] ),
 				'quantity'   => intval( $r['quantity'] ),
 				'location'   => sanitize_text_field( $r['location'] ?? '' ),
-			), array( '%d', '%d', '%s', '%f', '%d', '%s' ) );
+			), array( '%d', '%d', '%f', '%d', '%s' ) );
 			$i++;
 		}
 		return rest_ensure_response( array( 'saved' => $i ) );
@@ -240,7 +238,7 @@ class VCO_REST_API {
 				'kerf_mm'        => floatval( $prj['kerf'] ),
 				'min_reusable_m' => floatval( $cfg['min_reusable_m'] ?? 0.5 ),
 				'scrap_ratio'    => floatval( $cfg['scrap_ratio'] ?? 0.3 ),
-				'ton_price'      => floatval( $cfg['ton_price'] ?? ( $cfg['default_price'] ?? 0 ) ),
+				'kg_price'       => floatval( $cfg['kg_price'] ?? ( $cfg['default_price'] ?? 0 ) ),
 				'cuts'           => $prj['cuts'],
 				'inventory'      => $prj['inventory'],
 			),
@@ -260,7 +258,7 @@ class VCO_REST_API {
 			if ( $o['length'] <= 0 ) {
 				continue;
 			}
-			$key = $o['size'] . '|' . $o['grade'] . '|' . $o['length'];
+			$key = $o['size'] . '|' . $o['length'];
 			if ( ! isset( $agg[ $key ] ) ) {
 				$agg[ $key ] = $o + array( 'quantity' => 0 );
 			}
@@ -272,11 +270,10 @@ class VCO_REST_API {
 			$wpdb->insert( $t, array(
 				'project_id' => $projectId,
 				'size'       => intval( $row['size'] ),
-				'grade'      => $row['grade'],
 				'bar_length' => floatval( $row['length'] ),
 				'quantity'   => intval( $row['quantity'] ),
 				'location'   => VCO_Admin::OFFCUT_TAG,
-			), array( '%d', '%d', '%s', '%f', '%d', '%s' ) );
+			), array( '%d', '%d', '%f', '%d', '%s' ) );
 			$added++;
 		}
 		return $added;
@@ -291,7 +288,6 @@ class VCO_REST_API {
 			$wpdb->insert( $t, array(
 				'project_id'       => $projectId,
 				'size'             => $s['size'],
-				'grade'            => $s['grade'],
 				'bars_new_used'    => $s['new_bars'],
 				'inventory_used'   => wp_json_encode( $g['inventory_use'] ),
 				'total_waste'      => $s['waste_length'],
@@ -300,7 +296,7 @@ class VCO_REST_API {
 				'total_cost'       => $s['cost'],
 				'cutting_plan'     => wp_json_encode( array( 'stat' => $s, 'bars' => $g['bars'] ) ),
 				'created_at'       => current_time( 'mysql' ),
-			), array( '%d', '%d', '%s', '%d', '%s', '%f', '%f', '%f', '%f', '%s', '%s' ) );
+			), array( '%d', '%d', '%d', '%s', '%f', '%f', '%f', '%f', '%s', '%s' ) );
 		}
 	}
 
@@ -340,12 +336,12 @@ class VCO_REST_API {
 
 		$tcut = VCO_Database::table_name( VCO_Database::T_CUTS );
 		$row['cuts'] = $wpdb->get_results( $wpdb->prepare(
-			"SELECT id, size, grade, length, quantity, label, note FROM {$tcut} WHERE project_id = %d ORDER BY sort_order ASC", $id
+			"SELECT id, size, length, quantity, label, note FROM {$tcut} WHERE project_id = %d ORDER BY sort_order ASC", $id
 		), ARRAY_A );
 
 		$tinv = VCO_Database::table_name( VCO_Database::T_INVENTORY );
 		$row['inventory'] = $wpdb->get_results( $wpdb->prepare(
-			"SELECT id, size, grade, bar_length, quantity, location FROM {$tinv} WHERE project_id = %d ORDER BY id ASC", $id
+			"SELECT id, size, bar_length, quantity, location FROM {$tinv} WHERE project_id = %d ORDER BY id ASC", $id
 		), ARRAY_A );
 
 		return $row;
@@ -361,7 +357,7 @@ class VCO_REST_API {
 		return array(
 			'min_reusable_m' => 0.5,
 			'scrap_ratio'    => 0.3,
-			'ton_price'      => 0,
+			'kg_price'       => 0,
 			'auto_offcut'    => 1,
 		);
 	}
